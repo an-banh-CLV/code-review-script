@@ -360,6 +360,79 @@ def test_10(base_path):
     
     return results
 
+# Functions for Test 11
+def extract_includes_with_indentation(file_path):
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+    
+    includes_with_indent = []
+    for line in lines:
+        if line.startswith((' ', '\t')) and 'include:' in line:
+            includes_with_indent.append(line.strip())
+
+    return includes_with_indent
+
+def test_11(root_folder, base_folder_name):
+    indented_includes = []
+    
+    base_path_parts = os.path.normpath(root_folder).split(os.sep)
+    base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
+    
+    for foldername, subfolders, filenames in os.walk(root_folder):
+        relative_path = os.path.relpath(foldername, base_path)
+        
+        for filename in filenames:
+            if filename.endswith('.view.lkml'):
+                file_path = os.path.join(foldername, filename)
+                includes = extract_includes_with_indentation(file_path)
+                for include_statement in includes:
+                    indented_includes.append((relative_path, filename, include_statement))
+    
+    return indented_includes
+
+# Functions for Test 12
+def extract_fields(file_path):
+    with open(file_path, 'r') as f:
+        parsed = lkml.load(f)
+    
+    fields = []
+    for view in parsed.get('views', []):
+        view_name = view['name']
+        if view_name.startswith('+') and 'extends' not in view:  # Only consider views starting with '+', and not containing 'extends'
+            for dim in view.get('dimensions', []):
+                dim_name = dim['name']
+                parameters = list(dim.keys())
+                if 'sql' in parameters or 'type' in parameters:
+                    fields.append((view_name, "dimension", dim_name))
+            
+            for measure in view.get('measures', []):
+                measure_name = measure['name']
+                parameters = list(measure.keys())
+                if 'sql' in parameters or 'type' in parameters:
+                    fields.append((view_name, "measure", measure_name))
+    
+    return fields
+
+def test_12(root_folder, base_folder_name, subfolder=""):
+    relevant_fields = []
+    
+    base_path_parts = os.path.normpath(root_folder).split(os.sep)
+    base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
+    
+    target_folder = os.path.join(base_path, subfolder) if subfolder else root_folder
+    
+    for foldername, subfolders, filenames in os.walk(target_folder):
+        relative_path = os.path.relpath(foldername, base_path)
+        
+        for filename in filenames:
+            if filename.endswith('.view.lkml'):
+                file_path = os.path.join(foldername, filename)
+                fields = extract_fields(file_path)
+                for view_name, field_type, field_name in fields:
+                    relevant_fields.append((relative_path, filename, view_name, field_type, field_name))
+    
+    return relevant_fields
+
 # Setup for Flask App
 app = Flask(__name__)
 
@@ -575,6 +648,54 @@ def run_script10():
 
     return jsonify({
         "headers": ["Folder Path", "File Name", "View Name", "Dimension/Measure Name", "Matched Explores", "Type", "Expected Order", "Current Order"],
+        "data": output_data
+    })
+
+@app.route('/runscript11', methods=['POST'])
+def run_script11():
+    # Extract folder path from the POST request body
+    data = request.get_json()
+    root_folder = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+
+    # Ensure path is provided
+    if not root_folder:
+        return jsonify({"error": "Folder path must be provided."}), 400
+
+    results = test_11(root_folder, base_folder_name)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "File Path": item[0],
+        "File Name": item[1],
+        "Include Statement": item[2]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["Folder Path", "File Name", "Include Statement"],
+        "data": output_data
+    })
+
+@app.route('/runscript12', methods=['POST'])
+def run_script_12():
+    # Extract folder path from the POST request body
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+    
+    results = test_12(folder_path, base_folder_name, subfolder_name_01)
+    
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "File Path": item[0],
+        "File Name": item[1],
+        "View Name": item[2],
+        "Field Type": item[3],
+        "Field Name": item[4]
+    } for item in results]
+    
+    return jsonify({
+        "headers": ["File Path", "File Name", "View Name", "Field Type", "Field Name"],
         "data": output_data
     })
 
