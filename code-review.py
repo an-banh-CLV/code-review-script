@@ -313,7 +313,6 @@ def get_explore_names(base_path, view_name):
     """Returns a list of explore names where the term 'view_name.' is found in the 'fields' parameter."""
     explore_names = []
 
-
     for root, _, fileList in os.walk(base_path):
         for file in fileList:
             if file.endswith('.explore.lkml'):
@@ -432,6 +431,294 @@ def test_12(root_folder, base_folder_name, subfolder=""):
                     relevant_fields.append((relative_path, filename, view_name, field_type, field_name))
     
     return relevant_fields
+
+# Functions for Test 13
+def test_13(directory, root_folder):
+    results = []
+
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.view.lkml'):
+                full_file_path = os.path.join(root, file)
+                relative_folder = root.split(root_folder)[-1]
+                if relative_folder == '':
+                    folder = ''
+                else:
+                    folder = "/" + relative_folder.lstrip('/').replace('\\', '/') + "/"
+                with open(full_file_path, 'r') as f:
+                    content = f.read()
+
+                view_blocks = re.split(r'(?=view:\s*[\w+]+\s*{)', content)
+                for view_block in view_blocks:
+                    if "view:" in view_block:
+                        view_name = re.search(r'view:\s*([\w+]+)', view_block)
+                        if view_name:
+                            view_name = view_name.group(1)
+                            extends_param = re.search(r'extends:\s*\[([\w+,?\s*]+)\]', view_block)
+                            if extends_param:
+                                extends_view = extends_param.group(1).replace(" ", "").split(',')
+                                for view in extends_view:
+                                    results.append((folder, file, view_name, view))
+
+    return results
+
+# Functions for Test 14
+def extract_joins(file_path, explore_filename):
+    with open(file_path, 'r') as f:
+        parsed = lkml.load(f)
+    
+    joins_info = []
+    for explore in parsed.get('explores', []):
+        # Instead of the explore name, we will use the explore_filename parameter
+        explore_name = explore_filename
+        for join in explore.get('joins', []):
+            join_type = join.get('type', '')
+            relationship = join.get('relationship', '')
+            if join_type != 'left_outer' or relationship != 'many_to_one':
+                # Get join content with indentation as it appears in the LookML file
+                join_content = lkml.dump({'joins': [join]})
+                joins_info.append((explore_name, join_content))
+    
+    return joins_info
+
+def test_14(root_folder, base_folder_name):
+    invalid_joins = []
+    
+    base_path_parts = os.path.normpath(root_folder).split(os.sep)
+    base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
+    
+    for foldername, subfolders, filenames in os.walk(root_folder):
+        relative_path = os.path.relpath(foldername, base_path)
+        
+        for filename in filenames:
+            if filename.endswith('.explore.lkml'):
+                file_path = os.path.join(foldername, filename)
+                # When calling the extract_joins function, pass the filename as the second argument
+                joins = extract_joins(file_path, filename.replace('.explore.lkml', ''))
+                for explore_name, join_content in joins:
+                    invalid_joins.append((relative_path, explore_name, join_content))
+    
+    return invalid_joins
+
+# Functions for Test 15
+def test_15(file, folder, explore_name, parameters, parameter_hierarchy, results):
+    # Check the order
+    correct_order = True
+    last_index = -1
+    filtered_params = [param for param in parameters if param in parameter_hierarchy]
+    for param in filtered_params:
+        if param in parameter_hierarchy:
+            param_index = parameter_hierarchy.index(param)
+            if param_index < last_index:
+                correct_order = False
+                break
+            last_index = param_index
+
+    if not correct_order:
+        parameter_order_str = ', '.join([f"{param}" for param in parameter_hierarchy if param in filtered_params])
+        current_order_str = ', '.join([f"{param}" for param in filtered_params])
+        results.append((folder, file, explore_name, parameter_order_str, current_order_str))
+
+# Functions for Test 16
+def extract_dimensions(file_path):
+    with open(file_path, 'r') as f:
+        parsed = lkml.load(f)
+    
+    dimensions = []
+    for view in parsed.get('views', []):
+        view_name = view['name']
+        for dim in view.get('dimensions', []):
+            dim_name = dim['name']
+            parameters = list(dim.keys())
+            dimensions.append((view_name, dim_name, parameters))
+    
+    return dimensions
+
+def test_16(root_folder, base_folder_name):
+    wrong_dimensions = []
+    
+    base_path_parts = os.path.normpath(root_folder).split(os.sep)
+    base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
+    
+    for foldername, subfolders, filenames in os.walk(root_folder):
+        relative_path = os.path.relpath(foldername, base_path)
+        for filename in filenames:
+            if filename.endswith('.view.lkml'):
+                file_path = os.path.join(foldername, filename)
+                dimensions = extract_dimensions(file_path)
+                for view_name, dim_name, parameters in dimensions:
+                    if 'primary_key' in parameters and "03_Spoke_Marts" not in relative_path:
+                        explores = get_explore_names(root_folder, view_name)
+                        wrong_dimensions.append((relative_path, view_name, dim_name, filename, explores))
+    
+    return wrong_dimensions
+
+# Functions for Test 17
+def test_17(root_folder, base_folder_name):
+    wrong_dimensions = []
+    parameter_hierarchy = ['primary_key', 'hidden', 'type']
+    
+    base_path_parts = os.path.normpath(root_folder).split(os.sep)
+    base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
+    
+    for foldername, subfolders, filenames in os.walk(root_folder):
+        relative_path = os.path.relpath(foldername, base_path)
+        for filename in filenames:
+            if filename.endswith('.view.lkml'):
+                file_path = os.path.join(foldername, filename)
+                dimensions = extract_dimensions(file_path)
+                for view_name, dim_name, parameters in dimensions:
+                    if 'primary_key' in parameters:
+                        expected_order, current_order = check_parameter_order(parameters, parameter_hierarchy)
+                        if expected_order and current_order:
+                            wrong_dimensions.append((relative_path, view_name, dim_name, expected_order, current_order))
+
+    
+    return wrong_dimensions
+
+# Functions for Test 18
+def extract_dimensions_1(file_path):
+    with open(file_path, 'r') as f:
+        parsed = lkml.load(f)
+    
+    dimensions = []
+    for view in parsed.get('views', []):
+        view_name = view['name']
+        for dim in view.get('dimensions', []):
+            dim_name = dim['name']
+            parameters = dim  # Keep parameters as a dictionary
+            dimensions.append((view_name, dim_name, parameters))
+    
+    return dimensions
+
+def test_18(root_folder, base_folder_name):
+    wrong_dimensions = []
+    
+    base_path_parts = os.path.normpath(root_folder).split(os.sep)
+    base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
+    
+    for foldername, subfolders, filenames in os.walk(root_folder):
+        relative_path = os.path.relpath(foldername, base_path)
+        for filename in filenames:
+            if filename.endswith('.view.lkml'):
+                file_path = os.path.join(foldername, filename)
+                dimensions = extract_dimensions_1(file_path)
+                for view_name, dim_name, parameters in dimensions:
+                    if 'primary_key' in parameters:
+                        sql_value = parameters.get('sql', '')
+                        if not any(keyword in sql_value for keyword in ["${TABLE}.", "concat", "||", "CONCAT"]):
+                            wrong_dimensions.append((relative_path, view_name, dim_name, sql_value))
+
+    return wrong_dimensions
+
+# Functions for Test 19
+def test_19(root_folder, base_folder_name):
+    wrong_dimensions = []
+    
+    base_path_parts = os.path.normpath(root_folder).split(os.sep)
+    base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
+    
+    for foldername, subfolders, filenames in os.walk(root_folder):
+        relative_path = os.path.relpath(foldername, base_path)
+        for filename in filenames:
+            if filename.endswith('.view.lkml'):
+                file_path = os.path.join(foldername, filename)
+                dimensions = extract_dimensions(file_path)
+                for view_name, dim_name, parameters in dimensions:
+                    if 'primary_key' in parameters and 'primary_key' in dim_name:
+                        wrong_dimensions.append((relative_path, view_name, dim_name))
+    
+    return wrong_dimensions
+
+# Functions for Test 20
+def test_20(directory, root_folder):
+    results = []
+
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.view.lkml'):
+                full_file_path = os.path.join(root, file)
+                relative_folder = root.split(root_folder)[-1]
+                if relative_folder == '':
+                    folder = ''
+                else:
+                    folder = "/" + relative_folder.lstrip('/').replace('\\', '/') + "/"
+                with open(full_file_path, 'r') as f:
+                    parsed_content = lkml.load(f)
+
+                for view in parsed_content.get('views', []):
+                    view_name = view['name']
+                    for dim_group in view.get('dimension_groups', []):
+                        
+                        dim_group_name = dim_group['name']
+                        dim_group_body = dim_group  # Modify this if you want specific parts of the body.
+                        convert_tz_param = dim_group.get('convert_tz')
+                        print(convert_tz_param)
+
+                        if convert_tz_param != 'no':
+                            results.append((folder, file, view_name, dim_group_name))
+
+    return results
+
+# Functions for Test 21
+def test_21(directory, root_folder):
+    results = []
+
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.view.lkml'):
+                full_file_path = os.path.join(root, file)
+                relative_folder = root.split(root_folder)[-1]
+                if relative_folder == '':
+                    folder = ''
+                else:
+                    folder = "/" + relative_folder.lstrip('/').replace('\\', '/') + "/"
+                with open(full_file_path, 'r') as f:
+                    content = f.read()
+
+                view_blocks = re.split(r'(?=view:\s*[\w+]+\s*{)', content)
+                for view_block in view_blocks:
+                    if "view:" in view_block:
+                        view_name = re.search(r'view:\s*([\w+]+)', view_block)
+                        if view_name:
+                            view_name = view_name.group(1)
+                            sql_table_name = re.search(r'sql_table_name:\s*`([^`]+)`', view_block)
+                            if sql_table_name:
+                                sql_table_name = sql_table_name.group(1)
+                                if "@" not in sql_table_name:
+                                    results.append((folder, file, view_name, sql_table_name))
+
+    return results
+
+# Functions for Test 22
+def test_22(folder_path):
+    constants_info = []
+
+    for subdir, _, files in os.walk(folder_path):
+        for file in files:
+            if file == 'manifest.lkml':
+                file_path = os.path.join(subdir, file)
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                    constant_blocks = content.split("constant:")[1:]
+
+                    for block in constant_blocks:
+                        constant_content = "constant:" + block
+                        try:
+                            parsed_constant = lkml.load(constant_content)
+                            constant = parsed_constant.get('constant')
+                            if isinstance(constant, dict):
+                                keys = list(constant.keys())
+                                extra_keys = [k for k in keys if k not in ['value', 'name']]
+                                if extra_keys:
+                                    constants_info.append({
+                                        'constant_name': constant.get('name', 'Unknown'),
+                                        'parameters': ", ".join(extra_keys)
+                                    })
+                        except Exception as e:
+                            print(f"Error parsing constant in {file_path}: {e}")
+
+    return constants_info
 
 # Setup for Flask App
 app = Flask(__name__)
@@ -696,6 +983,235 @@ def run_script_12():
     
     return jsonify({
         "headers": ["File Path", "File Name", "View Name", "Field Type", "Field Name"],
+        "data": output_data
+    })
+
+@app.route('/runscript13', methods=['POST'])
+def run_script_13():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+    
+    results = test_13(folder_path, base_folder_name)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "Folder": item[0],
+        "Filename": item[1],
+        "View": item[2],
+        "Extends from View": item[3]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["Folder", "Filename", "View", "Extends from View"],
+        "data": output_data
+    })
+
+@app.route('/runscript14', methods=['POST'])
+def run_script_14():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+    
+    results = test_14(folder_path, base_folder_name)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "File Path": item[0],
+        "Explore Name": item[1],
+        "Join Content": item[2]
+    } for item in results]
+    
+    return jsonify({
+        "headers": ["File Path", "Explore Name", "Join Content"],
+        "data": output_data
+    })
+
+@app.route('/runscript15', methods=['POST'])
+def run_script_15():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+    parameter_hierarchy = ['view_name', 'group_label', 'label', 'description']
+    results = []
+
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith('.explore.lkml'):
+                full_file_path = os.path.join(root, file)
+                relative_folder = root.split(base_folder_name)[-1]
+                if relative_folder == '':
+                    folder = ''
+                else:
+                    folder = "/" + relative_folder.lstrip('/').replace('\\', '/') + "/"
+                with open(full_file_path, 'r') as f:
+                    content = f.read()
+
+                explore_blocks = re.split(r'(?=explore:\s*[\w+]+\s*{)', content)
+                for explore_block in explore_blocks:
+                    if "explore:" in explore_block:
+                        explore_name = re.search(r'explore:\s*([\w+]+)', explore_block)
+                        if explore_name:
+                            explore_name = explore_name.group(1)
+                            parameters = re.findall(r'\s*(\w+):\s*', explore_block)
+                            test_15(file, folder, explore_name, parameters, parameter_hierarchy, results)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "Folder": item[0],
+        "Filename": item[1],
+        "Explore": item[2],
+        "Expected Order": item[3],
+        "Current Order": item[4]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["Folder", "Filename", "Explore", "Expected Order", "Current Order"],
+        "data": output_data
+    })
+
+@app.route('/runscript16', methods=['POST'])
+def run_script_16():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+
+    results = test_16(folder_path, base_folder_name)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "File Path": item[0],
+        "View Name": item[1],
+        "Dimension Name": item[2],
+        "File Name": item[3],
+        "Explore Names": item[4]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["File Path", "View Name", "Dimension Name", "File Name", "Explore Names"],
+        "data": output_data
+    })
+
+@app.route('/runscript17', methods=['POST'])
+def run_script_17():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+
+    results = test_17(folder_path, base_folder_name)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "Folder": item[0],
+        "View Name": item[1],
+        "Dimension Name": item[2],
+        "Expected Order": item[3],
+        "Current Order": item[4]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["Folder", "View Name", "Dimension Name", "Expected Order", "Current Order"],
+        "data": output_data
+    })
+
+@app.route('/runscript18', methods=['POST'])
+def run_script_18():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+
+    results = test_18(folder_path, base_folder_name)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "File Path": item[0],
+        "View Name": item[1],
+        "Dimension Name": item[2],
+        "SQL Value": item[3]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["File Path", "View Name", "Dimension Name", "SQL Value"],
+        "data": output_data
+    })
+
+@app.route('/runscript19', methods=['POST'])
+def run_script_19():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+
+    results = test_19(folder_path, base_folder_name)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "File Path": item[0],
+        "View Name": item[1],
+        "Dimension Name": item[2]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["File Path", "View Name", "Dimension Name"],
+        "data": output_data
+    })
+
+@app.route('/runscript20', methods=['POST'])
+def run_script_20():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+
+    results = test_20(folder_path, base_folder_name)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "Folder": item[0],
+        "File Name": item[1],
+        "View Name": item[2],
+        "Dimension Group": item[3]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["Folder", "File Name", "View Name", "Dimension Group"],
+        "data": output_data
+    })
+
+@app.route('/runscript21', methods=['POST'])
+def run_script_21():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+    base_folder_name = data.get('base_folder')
+
+    results = test_21(folder_path, base_folder_name)
+
+    # Convert the results to a list of dictionaries for JSON serialization
+    output_data = [{
+        "Folder": item[0],
+        "File Name": item[1],
+        "View Name": item[2],
+        "Hardcoded BQ View": item[3]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["Folder", "File Name", "View Name", "Hardcoded BQ View"],
+        "data": output_data
+    })
+
+@app.route('/runscript22', methods=['POST'])
+def run_script_22():
+    data = request.get_json()
+    folder_path = data.get('folder_path_spoke')
+
+    results = test_22(folder_path)
+
+    # Convert the results to JSON format
+    output_data = [{
+        "Constant Name": item[0],
+        "Parameter": item[1]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["Constant Name", "Parameter"],
         "data": output_data
     })
 

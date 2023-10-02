@@ -4,7 +4,7 @@ import csv
 import re
 
 
-base_path = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_bkg_doc_spoke/'
+base_path = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_oneforce_spoke/'
 parameter_hierarchy = ['hidden', 'view_label', 'group_label', 'group_item_label', 'label', 'type','description','sql_distinct_key','sql']
 results = []
 

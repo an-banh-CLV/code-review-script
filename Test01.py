@@ -3,7 +3,7 @@ import lkml
 import pandas as pd
 
 folder_path_1 = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_hub/'
-folder_path_2 = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_bkg_doc_spoke/'
+folder_path_2 = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_oneforce_spoke/'
 subfolder_name = '01_Extend_&_Refine'
 
 def extract_all_view_names(file_path):

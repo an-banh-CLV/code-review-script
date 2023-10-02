@@ -7,7 +7,7 @@ from openpyxl.styles import Alignment
 
 def main():
     root_folder = 'ONELooker'
-    directory = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_bkg_doc_spoke/'
+    directory = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_oneforce_spoke/'
     results = []
 
     for root, dirs, files in os.walk(directory):

@@ -3,7 +3,7 @@ import re
 import lkml
 import pandas as pd
 
-directory_to_search = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_bkg_doc_spoke/'
+directory_to_search = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_oneforce_spoke/'
 
 def parse_lkml_files(folder_path):
     constants_info = []

@@ -3,7 +3,7 @@ import lkml
 import openpyxl
 
 parameter_hierarchy = ['primary_key', 'hidden', 'type']
-folder_path = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_bkg_doc_spoke/'
+folder_path = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_oneforce_spoke/'
 base_folder_name = 'ONELooker'
 
 def check_parameter_order(parameters, parameter_hierarchy):
