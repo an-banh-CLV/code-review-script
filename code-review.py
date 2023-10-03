@@ -1215,6 +1215,45 @@ def run_script_22():
         "data": output_data
     })
 
+# app for fetching one-hub
+@app.route('/fetchLookMLData', methods=['GET'])
+def fetch_lookml_data():
+    print("Endpoint hit!")
+    data = []
+
+    # Your directory path
+    lookml_dir = os.path.join(os.path.expanduser('~'),'An-ONE-Looker','LOOKML_one_hub')
+
+    for root, _, fileList in os.walk(lookml_dir):      
+        for file in fileList:          
+            if 'view' in file.lower():
+                with open(os.path.join(root, file), 'r') as fileObj:
+                    try:
+                        lookml = lkml.load(fileObj)
+                    except SyntaxError as e:
+                        print(f"Error parsing {file}: {e}")
+                        continue
+
+                    if 'views' in lookml:
+                        for view in lookml['views']:                         
+                            if 'sql_table_name' in view:
+                                view_name = os.path.splitext(file)[0]
+                                sql_table_full = view.get('sql_table_name', '')
+                                sql_table = sql_table_full.split('.')[-1].replace('`', '')                              
+                                if sql_table:
+                                    data.append([view_name, sql_table])
+    
+    # Convert the results to JSON format
+    output_data = [{
+        "View Name": item[0],
+        "Table Name": item[1]
+    } for item in data]
+
+    return jsonify({
+        "headers": ["View Name", "Table Name"],
+        "data": output_data
+    })
+
 if __name__ == '__main__':
     app.run(debug=True)
 
