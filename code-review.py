@@ -418,7 +418,7 @@ def test_12(root_folder, base_folder_name, subfolder=""):
     base_path_parts = os.path.normpath(root_folder).split(os.sep)
     base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
     
-    target_folder = os.path.join(base_path, subfolder) if subfolder else root_folder
+    target_folder = os.path.join(root_folder, subfolder) if subfolder else root_folder
     
     for foldername, subfolders, filenames in os.walk(target_folder):
         relative_path = os.path.relpath(foldername, base_path)
