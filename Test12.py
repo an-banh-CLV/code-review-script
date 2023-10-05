@@ -42,10 +42,10 @@ def process_folder(root_folder, base_folder_name, subfolder=""):
     
     for foldername, subfolders, filenames in os.walk(target_folder):
         relative_path = os.path.relpath(foldername, base_path)
-        print(f"Target folder: {relative_path}")
+        # print(f"Target folder: {relative_path}")
         for filename in filenames:
             if filename.endswith('.view.lkml'):
-                print(f"Checking file: {filename}")
+                # print(f"Checking file: {filename}")
                 file_path = os.path.join(foldername, filename)
                 fields = extract_fields(file_path)
                 for view_name, field_type, field_name in fields:
