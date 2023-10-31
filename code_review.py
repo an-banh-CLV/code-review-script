@@ -8,10 +8,6 @@ from code_review_helper import *
 # Setup for Flask App
 app = Flask(__name__)
 
-subfolder_name_01 = '01_Extend_&_Refine' 
-lookml_hub = 'LOOKML_one_hub'
-base_path = 'C:/Users/NC/Documents/ONELooker/'
-
 @app.route('/gitpull', methods=['POST'])
 def git_pull():
     data = request.get_json()
@@ -48,10 +44,10 @@ def run_script1():
     results = test_01(folder_path_1, folder_path_2, subfolder_name_01)
     
     # Convert the results to a list of dictionaries for JSON serialization
-    output_data = [{"Folder Path": item[0], "File Name": item[1], "View Name": item[2]} for item in results]
+    output_data = [{"Folder Path": item[0], "File Name": item[1], "View Name": item[2], "Has Derived Table": item[3]} for item in results]
     
     return jsonify({
-    "headers": ["Folder Path", "File Name", "View Name"],
+    "headers": ["Folder Path", "File Name", "View Name", "Has Derived Table"],
     "data": output_data
     })
 
@@ -83,18 +79,17 @@ def run_script_3():
     data = request.get_json()
     project_name = data.get('project_name', None)
     root_folder = get_project_path(project_name)
-    
-    explore_results, test_param_results = test_03(root_folder, base_folder_name)
-    
-    headers = ["Folder Path", "File Name"]
     results = []
     
-    if len(explore_results) != len(test_param_results):
-        results = explore_results + test_param_results
+    all_views_with_details, all_tests, all_primary_keys = process_folder(root_folder, base_folder_name)
+    results = test_03(all_views_with_details, all_tests, all_primary_keys)
+    
+    headers = ["Folder Path", "File Name", "View Name", "Primary Key Dimension"]
+    output_data = [{"Folder Path": item[0], "File Name": item[1], "View Name": item[2], "Primary Key Dimension": item[3]} for item in results]
 
     return jsonify({
         "headers": headers,
-        "data": results
+        "data": output_data
     })
 
 @app.route('/runscript4', methods=['POST'])
@@ -238,14 +233,14 @@ def run_script10():
         "File Name": item[1],
         "View Name": item[2],
         "Dimension/Measure Name": item[3],
-        "Matched Explores": item[4],
+        "Explores": item[4],
         "Type": item[5],
         "Expected Order": item[6],
         "Current Order": item[7]
     } for item in results]
 
     return jsonify({
-        "headers": ["Folder Path", "File Name", "View Name", "Dimension/Measure Name", "Matched Explores", "Type", "Expected Order", "Current Order"],
+        "headers": ["Folder Path", "File Name", "View Name", "Dimension/Measure Name", "Explores", "Type", "Expected Order", "Current Order"],
         "data": output_data
     })
 
@@ -343,7 +338,7 @@ def run_script_15():
     data = request.get_json()
     project_name = data.get('project_name', None)
     root_folder = get_project_path(project_name)
-    parameter_hierarchy = ['view_name', 'group_label', 'label', 'description']
+    parameter_hierarchy = ['group_label', 'label', 'description']
     results = []
 
     for root, dirs, files in os.walk(root_folder):
@@ -373,11 +368,12 @@ def run_script_15():
         "Filename": item[1],
         "Explore": item[2],
         "Expected Order": item[3],
-        "Current Order": item[4]
+        "Current Order": item[4],
+        "Missing Parameter": item [5]
     } for item in results]
 
     return jsonify({
-        "headers": ["Folder", "Filename", "Explore", "Expected Order", "Current Order"],
+        "headers": ["Folder", "Filename", "Explore", "Expected Order", "Current Order", "Missing Parameter"],
         "data": output_data
     })
 
@@ -416,12 +412,14 @@ def run_script_17():
         "Folder": item[0],
         "View Name": item[1],
         "Dimension Name": item[2],
-        "Expected Order": item[3],
-        "Current Order": item[4]
+        "Explores": item[3],
+        "Expected Order": item[4],
+        "Current Order": item[5],
+        "Missing Parameter": item[6]
     } for item in results]
 
     return jsonify({
-        "headers": ["Folder", "View Name", "Dimension Name", "Expected Order", "Current Order"],
+        "headers": ["Folder", "View Name", "Dimension Name", "Explores", "Expected Order", "Current Order", "Missing Parameter"],
         "data": output_data
     })
 
@@ -438,11 +436,12 @@ def run_script_18():
         "File Path": item[0],
         "View Name": item[1],
         "Dimension Name": item[2],
-        "SQL Value": item[3]
+        "Explores": item[3],
+        "SQL Value": item[4]
     } for item in results]
 
     return jsonify({
-        "headers": ["File Path", "View Name", "Dimension Name", "SQL Value"],
+        "headers": ["File Path", "View Name", "Dimension Name", "Explores", "SQL Value"],
         "data": output_data
     })
 
@@ -458,11 +457,12 @@ def run_script_19():
     output_data = [{
         "File Path": item[0],
         "View Name": item[1],
-        "Dimension Name": item[2]
+        "Dimension Name": item[2],
+        "Explores": item[3]
     } for item in results]
 
     return jsonify({
-        "headers": ["File Path", "View Name", "Dimension Name"],
+        "headers": ["File Path", "View Name", "Dimension Name", "Explores"],
         "data": output_data
     })
 
@@ -479,11 +479,12 @@ def run_script_20():
         "Folder": item[0],
         "File Name": item[1],
         "View Name": item[2],
-        "Dimension Group": item[3]
+        "Dimension Group": item[3],
+        "Explores": item[4]
     } for item in results]
 
     return jsonify({
-        "headers": ["Folder", "File Name", "View Name", "Dimension Group"],
+        "headers": ["Folder", "File Name", "View Name", "Dimension Group", "Explores"],
         "data": output_data
     })
 
@@ -534,7 +535,7 @@ def fetch_lookml_data():
     data = []
 
     # Your directory path
-    lookml_dir = os.path.join(os.path.expanduser('~'),'An-ONE-Looker','LOOKML_one_hub')
+    lookml_dir = get_lookml_hub_path()
 
     for root, _, fileList in os.walk(lookml_dir):      
         for file in fileList:          

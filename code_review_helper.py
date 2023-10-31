@@ -4,8 +4,8 @@ import re
 
 subfolder_name_01 = '01_Extend_&_Refine' 
 lookml_hub = 'LOOKML_one_hub'
-base_path = 'C:/Users/NC/Documents/ONELooker/'
-base_folder_name = 'ONELooker'
+base_path = '/home/looker/An-ONE-Looker/'
+base_folder_name = 'An-ONE-Looker'
 
 # Helper functions
 def get_project_path(project_name):
@@ -43,31 +43,65 @@ def extract_relevant_views(file_path):
     for view in parsed.get('views', []):
         if 'extends' in view:
             views_to_check.extend(view['extends'])
-        if view['name'].startswith('+'):
+        if 'extends__all' in view:
+            # Flattening the list of lists if necessary
+            for sublist in view['extends__all']:
+                views_to_check.extend(sublist)
+        if view.get('name', '').startswith('+'):
             views_to_check.append(view['name'].lstrip('+'))
     
     return views_to_check
 
+def check_derived_table(file_path):
+    with open(file_path, 'r') as file:
+        lookml = lkml.load(file)
+        for view in lookml.get('views', []):
+            if 'derived_table' in view:
+                return True
+    return False
+
 def test_01(folder_path_1, folder_path_2, subfolder_name):
     view_names_from_path_1 = set()  # Using set for O(1) lookups
+    views_in_subfolder = set()      # Set to track views in '01_Extend_&_Refine' subfolder
+    results = []
+    
+    # Process folder_path_1
     for foldername, _, filenames in os.walk(folder_path_1):
         for filename in filenames:
             if filename.endswith('.view.lkml'):
                 file_path = os.path.join(foldername, filename)
                 view_names_from_path_1.update(extract_all_view_names(file_path))
+    
+    # Process folder_path_2, specifically the target subfolder
+    target_folder_2 = os.path.join(folder_path_2, subfolder_name).lower()  # Ensure case-insensitive matching
 
-    results = []
-    target_folder_2 = os.path.join(folder_path_2, subfolder_name)
-    views_from_path_2_to_check = set()  # Use a set to store views from path_2 to avoid duplicates
-    for foldername, _, filenames in os.walk(target_folder_2):
+    for foldername, _, filenames in os.walk(folder_path_2):
+        in_target_subfolder = target_folder_2 in foldername.lower()
+
+        # Extract the part of foldername that comes after the base_folder_name
+        path_parts = os.path.normpath(foldername).split(os.sep)
+        try:
+            base_index = path_parts.index(base_folder_name) + 1  # Start after the base_folder_name
+        except ValueError:
+            # base_folder_name not in path, continue to next iteration
+            continue
+        relative_folder_path = os.sep.join(path_parts[base_index:])
+
         for filename in filenames:
             if filename.endswith('.view.lkml'):
                 file_path = os.path.join(foldername, filename)
                 views_from_path_2 = extract_relevant_views(file_path)
-                views_from_path_2_to_check.update(views_from_path_2)
+                is_derived = check_derived_table(file_path)  # Check if this view has a derived table
+
+                if in_target_subfolder:
+                    views_in_subfolder.update(views_from_path_2)
+                
                 for view_name in views_from_path_2:
-                    if view_name not in view_names_from_path_1:
-                        results.append((foldername, filename, view_name))
+                    derived_status = 'Yes' if is_derived else 'No'
+                    if ((view_name in views_in_subfolder and view_name not in view_names_from_path_1) or 
+                        (view_name in view_names_from_path_1 and view_name not in views_in_subfolder)):
+                        results.append((relative_folder_path, filename, view_name, derived_status))
+
     return results
 
 # Functions for Test 2
@@ -89,11 +123,12 @@ def test_02(root_folder, base_folder_name):
     target_folder = os.path.join(root_folder, "03_Spoke_Marts", "01_Common_Marts")
     
     base_path_parts = os.path.normpath(target_folder).split(os.sep)
-    base_index = base_path_parts.index(base_folder_name)
+    base_index = base_path_parts.index(base_folder_name)+1
     
     for foldername, subfolders, filenames in os.walk(target_folder):
         path_parts = os.path.normpath(foldername).split(os.sep)
-        relative_path = os.sep.join(path_parts[base_index:])
+        relative_path_parts = path_parts[base_index:]  # Include base_folder_name and everything after it
+        relative_path = os.sep.join(relative_path_parts)
         
         for filename in filenames:
             if filename.endswith('.view.lkml'):
@@ -108,33 +143,73 @@ def test_02(root_folder, base_folder_name):
     return results
 
 # Functions for Test 3
-def extract_test_param_files(file_path):
-    with open(file_path, 'r') as f:
-        content = f.read()
-    
-    if "test:" in content:
-        return True
+def extract_relevant_views_test03(file_path):
+    with open(file_path, 'r') as file:
+        parsed = lkml.load(file)
+
+    relevant_views = []
+    primary_keys = {}
+    for item in parsed.get('views', []):
+        view_name = item.get('name')
+        if view_name and "+" not in view_name and not item.get('extends__all'):
+            relevant_views.append(view_name)
+
+            # Checking for primary key dimensions
+            for dimension in item.get('dimensions', []):
+                if dimension.get('primary_key') == 'yes':
+                    primary_keys[view_name] = dimension.get('name')
+    return relevant_views, primary_keys
+
+def extract_test_names(file_content):
+    # Regular expression to extract test names
+    # Adjust this regex based on your file structure and test naming conventions
+    test_names = re.findall(r'test:\s*([\w_]+)\s*\{', file_content)
+    return test_names
+
+def is_view_in_test(view_name, test_names):
+    # Check if view name is part of any test name
+    for test_name in test_names:
+        print(f"Checking view: {view_name}")
+        print(f"Checking test: {test_name}")
+        if view_name in test_name:
+            return True
     return False
 
-def test_03(root_folder, base_folder_name):
-    relevant_fields = []
-    explore_files = []
-    test_param_files = []
+def process_folder(root_folder, base_folder_name):
+    all_views_with_details = []  # To store view details along with file path and name
+    all_tests = []
+    all_primary_keys = {} 
 
-    base_path_parts = os.path.normpath(root_folder).split(os.sep)
-    base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
-    
+    # First pass: Collect all view names along with their file details
     for foldername, _, filenames in os.walk(root_folder):
-        relative_path = os.path.relpath(foldername, base_path)
-        
         for filename in filenames:
-            if filename.endswith('.explore.lkml'):
-                explore_files.append((relative_path, filename))
-            
-            if filename.endswith('.lkml') and extract_test_param_files(os.path.join(foldername, filename)):
-                test_param_files.append((relative_path, filename))
-    
-    return explore_files, test_param_files  
+            if filename.endswith('.lkml'):
+                file_path = os.path.join(foldername, filename)
+                relevant_views, primary_keys = extract_relevant_views_test03(file_path)
+                for view in relevant_views:
+                    all_views_with_details.append((os.path.relpath(foldername, root_folder), filename, view))
+                all_primary_keys.update(primary_keys)
+
+    # Second pass: Collect all test names
+    for foldername, _, filenames in os.walk(root_folder):
+        for filename in filenames:
+            if filename.endswith('.lkml'):
+                file_path = os.path.join(foldername, filename)
+                with open(file_path, 'r') as file:
+                    content = file.read()
+                    test_names = extract_test_names(content)
+                    all_tests.extend(test_names)
+
+    return all_views_with_details, all_tests, all_primary_keys
+
+def test_03(all_views_with_details, all_tests, all_primary_keys):
+    views_not_in_test = []
+    for folder_path, file_name, view in all_views_with_details:
+        if not any(view in test for test in all_tests):
+            # Add primary key dimension name if available
+            primary_key = all_primary_keys.get(view, "N/A")
+            views_not_in_test.append((folder_path, file_name, view, primary_key))  # Ensure 4 elements are added
+    return views_not_in_test
 
 # Functions for Test 4
 def test_04(root_folder, base_folder_name, target_subfolder):
@@ -144,7 +219,7 @@ def test_04(root_folder, base_folder_name, target_subfolder):
     full_folder_path = os.path.join(root_folder, target_subfolder)
     
     base_path_parts = os.path.normpath(root_folder).split(os.sep)
-    base_index = base_path_parts.index(base_folder_name)
+    base_index = base_path_parts.index(base_folder_name)+1
     
     for foldername, subfolders, filenames in os.walk(full_folder_path):
         path_parts = os.path.normpath(foldername).split(os.sep)
@@ -254,7 +329,7 @@ def test_08(root_folder, base_folder_name):
     results = []
     
     base_path_parts = os.path.normpath(root_folder).split(os.sep)
-    base_index = base_path_parts.index(base_folder_name)
+    base_index = base_path_parts.index(base_folder_name)+1
     
     for foldername, subfolders, filenames in os.walk(root_folder):
         path_parts = os.path.normpath(foldername).split(os.sep)
@@ -277,7 +352,7 @@ def test_09(root_folder, base_folder_name):
     results = []
     
     base_path_parts = os.path.normpath(root_folder).split(os.sep)
-    base_index = base_path_parts.index(base_folder_name)
+    base_index = base_path_parts.index(base_folder_name)+1
     
     for foldername, subfolders, filenames in os.walk(root_folder):
         path_parts = os.path.normpath(foldername).split(os.sep)
@@ -362,7 +437,7 @@ def test_10(base_path):
                             stripped_view_name = original_view_name.lstrip('+')
                             view_name = '="{}"'.format(view['name']) if view['name'].startswith('+') else view['name']
                             matched_explores = get_explore_names(base_path, stripped_view_name)
-                            for kind in ['dimensions', 'measures']:
+                            for kind in ['dimensions', 'measures', 'dimension_groups']:
                                 for item in view.get(kind, []):
                                     parameters = list(item.keys())
                                     expected_order, current_order = check_parameter_order(parameters, parameter_hierarchy)
@@ -519,6 +594,7 @@ def test_15(file, folder, explore_name, parameters, parameter_hierarchy, results
     correct_order = True
     last_index = -1
     filtered_params = [param for param in parameters if param in parameter_hierarchy]
+    
     for param in filtered_params:
         if param in parameter_hierarchy:
             param_index = parameter_hierarchy.index(param)
@@ -527,10 +603,15 @@ def test_15(file, folder, explore_name, parameters, parameter_hierarchy, results
                 break
             last_index = param_index
 
-    if not correct_order:
+    # Check if all parameters in parameter_hierarchy are present
+    missing_params = [param for param in parameter_hierarchy if param not in filtered_params]
+
+    if not correct_order or missing_params:
         parameter_order_str = ', '.join([f"{param}" for param in parameter_hierarchy if param in filtered_params])
         current_order_str = ', '.join([f"{param}" for param in filtered_params])
-        results.append((folder, file, explore_name, parameter_order_str, current_order_str))
+        missing_params_str = ', '.join(missing_params)
+        results.append((folder, file, explore_name, parameter_order_str, current_order_str, missing_params_str))
+
 
 # Functions for Test 16
 def extract_dimensions(file_path):
@@ -561,12 +642,37 @@ def test_16(root_folder, base_folder_name):
                 dimensions = extract_dimensions(file_path)
                 for view_name, dim_name, parameters in dimensions:
                     if 'primary_key' in parameters and "03_Spoke_Marts" not in relative_path:
-                        explores = get_explore_names(root_folder, view_name)
+                        stripped_view_name = view_name.lstrip('+')
+                        explores = get_explore_names(root_folder, stripped_view_name)
                         wrong_dimensions.append((relative_path, view_name, dim_name, filename, explores))
     
     return wrong_dimensions
 
 # Functions for Test 17
+def check_parameter_order_test17(parameters, parameter_hierarchy):
+    """Checks the order and presence of parameters against the hierarchy."""
+    correct_order = True
+    last_index = -1
+    filtered_params = [param for param in parameters if param in parameter_hierarchy]
+    
+    for param in filtered_params:
+        param_index = parameter_hierarchy.index(param)
+        if param_index < last_index:
+            correct_order = False
+            break
+        last_index = param_index
+
+    # Check if all parameters in parameter_hierarchy are present
+    missing_params = [param for param in parameter_hierarchy if param not in filtered_params]
+    
+    if not missing_params and correct_order:
+        return None, None, None
+
+    parameter_order_str = ', '.join([param for param in parameter_hierarchy if param in filtered_params])
+    current_order_str = ', '.join([param for param in filtered_params])
+    missing_params_str = ', '.join(missing_params)
+    return parameter_order_str, current_order_str, missing_params_str
+
 def test_17(root_folder, base_folder_name):
     wrong_dimensions = []
     parameter_hierarchy = ['primary_key', 'hidden', 'type']
@@ -582,11 +688,12 @@ def test_17(root_folder, base_folder_name):
                 dimensions = extract_dimensions(file_path)
                 for view_name, dim_name, parameters in dimensions:
                     if 'primary_key' in parameters:
-                        expected_order, current_order = check_parameter_order(parameters, parameter_hierarchy)
-                        if expected_order and current_order:
-                            wrong_dimensions.append((relative_path, view_name, dim_name, expected_order, current_order))
+                        expected_order, current_order, missing_params = check_parameter_order_test17(parameters, parameter_hierarchy)
+                        stripped_view_name = view_name.lstrip('+')
+                        explores = get_explore_names(root_folder, stripped_view_name)
+                        if expected_order and current_order and missing_params:
+                            wrong_dimensions.append((relative_path, view_name, dim_name, explores, expected_order, current_order, missing_params))
 
-    
     return wrong_dimensions
 
 # Functions for Test 18
@@ -619,8 +726,10 @@ def test_18(root_folder, base_folder_name):
                 for view_name, dim_name, parameters in dimensions:
                     if 'primary_key' in parameters:
                         sql_value = parameters.get('sql', '')
+                        stripped_view_name = view_name.lstrip('+')
+                        explores = get_explore_names(root_folder, stripped_view_name)
                         if not any(keyword in sql_value for keyword in ["${TABLE}.", "concat", "||", "CONCAT"]):
-                            wrong_dimensions.append((relative_path, view_name, dim_name, sql_value))
+                            wrong_dimensions.append((relative_path, view_name, dim_name, explores, sql_value))
 
     return wrong_dimensions
 
@@ -638,8 +747,12 @@ def test_19(root_folder, base_folder_name):
                 file_path = os.path.join(foldername, filename)
                 dimensions = extract_dimensions(file_path)
                 for view_name, dim_name, parameters in dimensions:
-                    if 'primary_key' in parameters and 'primary_key' in dim_name:
-                        wrong_dimensions.append((relative_path, view_name, dim_name))
+                    stripped_view_name = view_name.lstrip('+')
+                    explores = get_explore_names(root_folder, stripped_view_name)
+                    if 'primary_key' in parameters:
+                        if(('primary_key' in dim_name) or 
+                           ("_pk" not in dim_name and "pk_" not in dim_name)):
+                            wrong_dimensions.append((relative_path, view_name, dim_name, explores))
     
     return wrong_dimensions
 
@@ -661,15 +774,16 @@ def test_20(directory, root_folder):
 
                 for view in parsed_content.get('views', []):
                     view_name = view['name']
+                    stripped_view_name = view_name.lstrip('+')
                     for dim_group in view.get('dimension_groups', []):
-                        
+                        explores = get_explore_names(root_folder, stripped_view_name)
                         dim_group_name = dim_group['name']
                         dim_group_body = dim_group  # Modify this if you want specific parts of the body.
                         convert_tz_param = dim_group.get('convert_tz')
-                        print(convert_tz_param)
+                        #print(convert_tz_param)
 
                         if convert_tz_param != 'no':
-                            results.append((folder, file, view_name, dim_group_name))
+                            results.append((folder, file, view_name, dim_group_name, explores))
 
     return results
 
