@@ -3,6 +3,7 @@ import os
 import lkml
 import re
 import subprocess
+import pandas as pd
 from code_review_helper import *
 
 # Setup for Flask App
@@ -44,10 +45,16 @@ def run_script1():
     results = test_01(folder_path_1, folder_path_2, subfolder_name_01)
     
     # Convert the results to a list of dictionaries for JSON serialization
-    output_data = [{"Folder Path": item[0], "File Name": item[1], "View Name": item[2], "Has Derived Table": item[3]} for item in results]
+    output_data = [{
+        "Folder Path": item[0], 
+        "File Name": item[1], 
+        "View Name": item[2], 
+        "Extension View": item[3], 
+        "Has Derived Table": item[4]} 
+    for item in results]
     
     return jsonify({
-    "headers": ["Folder Path", "File Name", "View Name", "Has Derived Table"],
+    "headers": ["Folder Path", "File Name", "View Name", "Extension View", "Has Derived Table"],
     "data": output_data
     })
 
@@ -98,14 +105,21 @@ def run_script_4():
     data = request.get_json()
     project_name = data.get('project_name', None)
     root_folder = get_project_path(project_name)
+    folder_path_1 = get_lookml_hub_path()
     
-    results = test_04(root_folder, base_folder_name, subfolder_name_01)
+    results = test_04(folder_path_1, root_folder)
     
     # Convert the results to a list of dictionaries for JSON serialization
-    output_data = [{"File Path": item[0], "File Name": item[1]} for item in results]
+    output_data = [{
+        "Folder Path": item[0], 
+        "File Name": item[1], 
+        "View Name": item[2], 
+        "Extension View": item[3], 
+        "Has Derived Table": item[4]} 
+    for item in results]
     
     return jsonify({
-        "headers": ["File Path", "File Name"],
+        "headers": ["Folder Path", "File Name", "View Name", "Extension View", "Has Derived Table"],
         "data": output_data
     })
 
@@ -298,18 +312,21 @@ def run_script_13():
     project_name = data.get('project_name', None)
     root_folder = get_project_path(project_name)
     
-    results = test_13(root_folder, base_folder_name)
+    all_extends, view_to_extends_map = process_folder_test13(root_folder)
+    results = find_extension_chains(all_extends, view_to_extends_map)
 
+    print("Sample Results:", results[:5])
     # Convert the results to a list of dictionaries for JSON serialization
     output_data = [{
-        "Folder": item[0],
-        "Filename": item[1],
-        "View": item[2],
-        "Extends from View": item[3]
+        "Folder": item["folder_path"],
+        "Filename": item["file_name"],
+        "View": item["view_name"],
+        "Extension of View": item["extends"],
+        "Extension of View Extension": item.get("extends_extends", "None")
     } for item in results]
-
+    print("Sample Output Data:", output_data[:5])
     return jsonify({
-        "headers": ["Folder", "Filename", "View", "Extends from View"],
+        "headers": ["Folder", "Filename", "View", "Extension of View", "Extension of View Extension"],
         "data": output_data
     })
 
@@ -415,11 +432,12 @@ def run_script_17():
         "Explores": item[3],
         "Expected Order": item[4],
         "Current Order": item[5],
-        "Missing Parameter": item[6]
+        "Missing Parameter": item[6],
+        "Incorrect Values": item[7]
     } for item in results]
 
     return jsonify({
-        "headers": ["Folder", "View Name", "Dimension Name", "Explores", "Expected Order", "Current Order", "Missing Parameter"],
+        "headers": ["Folder", "View Name", "Dimension Name", "Explores", "Expected Order", "Current Order", "Missing Parameter", "Incorrect Values"],
         "data": output_data
     })
 

@@ -1,6 +1,7 @@
 import os
 import lkml
 import re
+import pandas as pd
 
 subfolder_name_01 = '01_Extend_&_Refine' 
 lookml_hub = 'LOOKML_one_hub'
@@ -37,20 +38,28 @@ def extract_all_view_names(file_path):
 
 def extract_relevant_views(file_path):
     with open(file_path, 'r') as f:
-        parsed = lkml.load(f)
-    
-    views_to_check = []
+        try:
+            parsed = lkml.load(f)
+        except SyntaxError as e:
+            print(f"Error parsing {file_path}: {e}")
+            return []
+
+    view_relations = []
     for view in parsed.get('views', []):
-        if 'extends' in view:
-            views_to_check.extend(view['extends'])
+        view_name = view.get('name')
+        extends_list = view.get('extends', [])
+        
         if 'extends__all' in view:
-            # Flattening the list of lists if necessary
             for sublist in view['extends__all']:
-                views_to_check.extend(sublist)
-        if view.get('name', '').startswith('+'):
-            views_to_check.append(view['name'].lstrip('+'))
+                extends_list.extend(sublist)
+                
+        if view_name.startswith('+'):
+            extends_list.append(view_name.lstrip('+'))
+        
+        for ext in extends_list:
+            view_relations.append((view_name, ext))
     
-    return views_to_check
+    return view_relations
 
 def check_derived_table(file_path):
     with open(file_path, 'r') as file:
@@ -90,17 +99,20 @@ def test_01(folder_path_1, folder_path_2, subfolder_name):
         for filename in filenames:
             if filename.endswith('.view.lkml'):
                 file_path = os.path.join(foldername, filename)
-                views_from_path_2 = extract_relevant_views(file_path)
+                relations_from_path_2 = extract_relevant_views(file_path)
                 is_derived = check_derived_table(file_path)  # Check if this view has a derived table
+
+                # Extract just the view names from the relations for tracking views in the subfolder
+                views_from_path_2 = {view for _, view in relations_from_path_2}
 
                 if in_target_subfolder:
                     views_in_subfolder.update(views_from_path_2)
                 
-                for view_name in views_from_path_2:
+                for extending_view, view_name in relations_from_path_2:
                     derived_status = 'Yes' if is_derived else 'No'
                     if ((view_name in views_in_subfolder and view_name not in view_names_from_path_1) or 
                         (view_name in view_names_from_path_1 and view_name not in views_in_subfolder)):
-                        results.append((relative_folder_path, filename, view_name, derived_status))
+                        results.append((relative_folder_path, filename, extending_view, view_name, derived_status))
 
     return results
 
@@ -212,24 +224,38 @@ def test_03(all_views_with_details, all_tests, all_primary_keys):
     return views_not_in_test
 
 # Functions for Test 4
-def test_04(root_folder, base_folder_name, target_subfolder):
-    results = []
-    
-    # Add the target subfolder to the root folder path
-    full_folder_path = os.path.join(root_folder, target_subfolder)
-    
-    base_path_parts = os.path.normpath(root_folder).split(os.sep)
-    base_index = base_path_parts.index(base_folder_name)+1
-    
-    for foldername, subfolders, filenames in os.walk(full_folder_path):
-        path_parts = os.path.normpath(foldername).split(os.sep)
-        relative_path = os.sep.join(path_parts[base_index:])
-        
+def test_04(folder_path_1, folder_path_2):
+    # Extract all view names from folder_path_1
+    view_names_from_path_1 = set()
+    for foldername, _, filenames in os.walk(folder_path_1):
         for filename in filenames:
-            if filename.endswith('.view.lkml') and not filename.endswith('_r.view.lkml'):
-                file_path = os.path.join(relative_path, filename)
-                results.append((file_path, filename))
-    
+            if filename.endswith('.view.lkml'):
+                file_path = os.path.join(foldername, filename)
+                view_names_from_path_1.update(extract_all_view_names(file_path))
+
+    # Initialize results list
+    results = []
+
+    # Iterate through folder_path_2 to find relevant views
+    for foldername, _, filenames in os.walk(folder_path_2):
+        
+        # Extract the part of foldername that comes after the base_folder_name
+        path_parts = os.path.normpath(foldername).split(os.sep)
+        try:
+            base_index = path_parts.index(base_folder_name) + 1  # Start after the base_folder_name
+        except ValueError:
+            # base_folder_name not in path, continue to next iteration
+            continue
+        relative_folder_path = os.sep.join(path_parts[base_index:])
+
+        for filename in filenames:
+            if filename.endswith('.view.lkml') and '_r' not in filename:
+                file_path = os.path.join(foldername, filename)
+                view_relations = extract_relevant_views(file_path)
+                for extending_view, extended_view in view_relations:
+                    if extended_view in view_names_from_path_1:
+                        derived_status = 'Yes' if check_derived_table(file_path) else 'No'
+                        results.append((foldername, filename, extending_view, extended_view, derived_status))
     return results
 
 # Functions for Test 5
@@ -336,7 +362,7 @@ def test_08(root_folder, base_folder_name):
         relative_path = os.sep.join(path_parts[base_index:])
         
         # Only consider folders starting with "02_" and ending with "_Marts"
-        if path_parts[-1].startswith('02_') and path_parts[-1].endswith('_Marts'):
+        if path_parts[-1] not in ('01_Common_Marts', '03_Spoke_Marts') and path_parts[-1].endswith('_Marts'):
             results.append((relative_path, path_parts[-1]))  # Adding folder name to the results
     
     return results
@@ -485,7 +511,7 @@ def extract_fields(file_path):
     fields = []
     for view in parsed.get('views', []):
         view_name = view['name']
-        if view_name.startswith('+') and 'extends' not in view:  # Only consider views starting with '+', and not containing 'extends'
+        if view_name.startswith('+') and 'extends__all' not in view:  # Only consider views starting with '+', and not containing 'extends'
             for dim in view.get('dimensions', []):
                 dim_name = dim['name']
                 parameters = list(dim.keys())
@@ -521,34 +547,54 @@ def test_12(root_folder, base_folder_name, subfolder=""):
     return relevant_fields
 
 # Functions for Test 13
-def test_13(directory, root_folder):
-    results = []
+def extract_views_with_extends(file_path):
+    with open(file_path, 'r') as file:
+        parsed = lkml.load(file)
 
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            if file.endswith('.view.lkml'):
-                full_file_path = os.path.join(root, file)
-                relative_folder = root.split(root_folder)[-1]
-                if relative_folder == '':
-                    folder = ''
-                else:
-                    folder = "/" + relative_folder.lstrip('/').replace('\\', '/') + "/"
-                with open(full_file_path, 'r') as f:
-                    content = f.read()
+    views_with_extends = []
+    for item in parsed.get('views', []):
+        view_name = item.get('name')
+        extends = item.get('extends__all')
+        if view_name and extends:
+            # The structure of extends is a list of lists
+            for extend_group in extends:
+                for extend_view in extend_group:
+                    views_with_extends.append((view_name, extend_view))
+    return views_with_extends
 
-                view_blocks = re.split(r'(?=view:\s*[\w+]+\s*{)', content)
-                for view_block in view_blocks:
-                    if "view:" in view_block:
-                        view_name = re.search(r'view:\s*([\w+]+)', view_block)
-                        if view_name:
-                            view_name = view_name.group(1)
-                            extends_param = re.search(r'extends:\s*\[([\w+,?\s*]+)\]', view_block)
-                            if extends_param:
-                                extends_view = extends_param.group(1).replace(" ", "").split(',')
-                                for view in extends_view:
-                                    results.append((folder, file, view_name, view))
+def process_folder_test13(root_folder):
+    all_extends = []
+    view_to_extends_map = {}  # Map each view to what it extends
 
-    return results
+    # Extract views and their extends
+    for foldername, _, filenames in os.walk(root_folder):
+        for filename in filenames:
+            if filename.endswith('.lkml'):
+                file_path = os.path.join(foldername, filename)
+                views_with_extends = extract_views_with_extends(file_path)
+                for view, extend in views_with_extends:
+                    view_to_extends_map[view] = extend
+                    
+                    all_extends.append({
+                        "folder_path": os.path.relpath(foldername, root_folder),
+                        "file_name": filename,
+                        "view_name": view,
+                        "extends": extend
+                    })
+
+    return all_extends, view_to_extends_map
+
+def find_extension_chains(all_extends, view_to_extends_map):
+    extension_chains = []
+    for view_detail in all_extends:
+        extending_view = view_detail["extends"]
+        # Check if this extending view is itself an extending view in the map
+        if extending_view in view_to_extends_map:
+            extended_by_extending = view_to_extends_map[extending_view]
+            view_detail["extends_extends"] = extended_by_extending  # Add second level of extends
+            extension_chains.append(view_detail)
+
+    return extension_chains
 
 # Functions for Test 14
 def extract_joins(file_path, explore_filename):
@@ -649,34 +695,53 @@ def test_16(root_folder, base_folder_name):
     return wrong_dimensions
 
 # Functions for Test 17
-def check_parameter_order_test17(parameters, parameter_hierarchy):
-    """Checks the order and presence of parameters against the hierarchy."""
+def check_parameter_order_test17(parameters, parameter_hierarchy, required_values):
     correct_order = True
     last_index = -1
     filtered_params = [param for param in parameters if param in parameter_hierarchy]
-    
+    missing_params = set(parameter_hierarchy) - set(filtered_params)
+    incorrect_values = {}
+
     for param in filtered_params:
         param_index = parameter_hierarchy.index(param)
         if param_index < last_index:
             correct_order = False
-            break
+
+        if param in required_values and parameters[param] != required_values[param]:
+            incorrect_values[param] = parameters[param]
+
         last_index = param_index
 
-    # Check if all parameters in parameter_hierarchy are present
-    missing_params = [param for param in parameter_hierarchy if param not in filtered_params]
-    
-    if not missing_params and correct_order:
-        return None, None, None
+    if correct_order and not incorrect_values and not missing_params:
+        return None, None, None, None
 
     parameter_order_str = ', '.join([param for param in parameter_hierarchy if param in filtered_params])
-    current_order_str = ', '.join([param for param in filtered_params])
+    current_order_str = ', '.join([f"{param}({parameters.get(param, 'None')})" for param in filtered_params])
     missing_params_str = ', '.join(missing_params)
-    return parameter_order_str, current_order_str, missing_params_str
+    incorrect_values_str = ', '.join([f"{k}({v})" for k, v in incorrect_values.items()])
+    
+    return parameter_order_str, current_order_str, missing_params_str, incorrect_values_str
+
+
+def extract_dimensions_test17(file_path, parameter_hierarchy):
+    with open(file_path, 'r') as f:
+        parsed = lkml.load(f)
+
+    dimensions = []
+    for view in parsed.get('views', []):
+        view_name = view['name']
+        for dim in view.get('dimensions', []):
+            dim_name = dim['name']
+            parameters = {k: v for k, v in dim.items() if k in parameter_hierarchy}
+            dimensions.append((view_name, dim_name, parameters))
+
+    return dimensions
 
 def test_17(root_folder, base_folder_name):
     wrong_dimensions = []
     parameter_hierarchy = ['primary_key', 'hidden', 'type']
-    
+    required_values = {'primary_key': 'yes', 'hidden': 'yes'}
+        
     base_path_parts = os.path.normpath(root_folder).split(os.sep)
     base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
     
@@ -685,15 +750,15 @@ def test_17(root_folder, base_folder_name):
         for filename in filenames:
             if filename.endswith('.view.lkml'):
                 file_path = os.path.join(foldername, filename)
-                dimensions = extract_dimensions(file_path)
+                dimensions = extract_dimensions_test17(file_path, parameter_hierarchy)
                 for view_name, dim_name, parameters in dimensions:
+                    stripped_view_name = view_name.lstrip('+')
+                    matched_explores = get_explore_names(base_path, stripped_view_name)
                     if 'primary_key' in parameters:
-                        expected_order, current_order, missing_params = check_parameter_order_test17(parameters, parameter_hierarchy)
-                        stripped_view_name = view_name.lstrip('+')
-                        explores = get_explore_names(root_folder, stripped_view_name)
-                        if expected_order and current_order and missing_params:
-                            wrong_dimensions.append((relative_path, view_name, dim_name, explores, expected_order, current_order, missing_params))
-
+                        expected_order, current_order, missing_params, incorrect_values = check_parameter_order_test17(parameters, parameter_hierarchy, required_values)
+                        if expected_order or missing_params or incorrect_values:
+                            wrong_dimensions.append((relative_path, view_name, dim_name, matched_explores, expected_order, current_order, missing_params, incorrect_values))
+    
     return wrong_dimensions
 
 # Functions for Test 18
@@ -750,8 +815,7 @@ def test_19(root_folder, base_folder_name):
                     stripped_view_name = view_name.lstrip('+')
                     explores = get_explore_names(root_folder, stripped_view_name)
                     if 'primary_key' in parameters:
-                        if(('primary_key' in dim_name) or 
-                           ("_pk" not in dim_name and "pk_" not in dim_name)):
+                        if "_pk" not in dim_name and "pk_" not in dim_name:
                             wrong_dimensions.append((relative_path, view_name, dim_name, explores))
     
     return wrong_dimensions
