@@ -373,10 +373,14 @@ def run_script_15():
                 explore_blocks = re.split(r'(?=explore:\s*[\w+]+\s*{)', content)
                 for explore_block in explore_blocks:
                     if "explore:" in explore_block:
-                        explore_name = re.search(r'explore:\s*([\w+]+)', explore_block)
-                        if explore_name:
-                            explore_name = explore_name.group(1)
-                            parameters = re.findall(r'\s*(\w+):\s*', explore_block)
+                        explore_name_match = re.search(r'explore:\s*([\w+]+)', explore_block)
+                        if explore_name_match:
+                            explore_name = explore_name_match.group(1)
+                            parameters = {}
+                            parameter_pattern = re.compile(r'(\w+):\s*(.*?)\s*(?=[\w\s]+:|$)')
+                            for match in parameter_pattern.finditer(explore_block):
+                                param_name, param_value = match.groups()
+                                parameters[param_name] = param_value
                             test_15(file, folder, explore_name, parameters, parameter_hierarchy, results)
 
     # Convert the results to a list of dictionaries for JSON serialization
@@ -386,11 +390,12 @@ def run_script_15():
         "Explore": item[2],
         "Expected Order": item[3],
         "Current Order": item[4],
-        "Missing Parameter": item [5]
+        "Missing Parameter": item [5],
+        "Blank Value": item[6]
     } for item in results]
 
     return jsonify({
-        "headers": ["Folder", "Filename", "Explore", "Expected Order", "Current Order", "Missing Parameter"],
+        "headers": ["Folder", "Filename", "Explore", "Expected Order", "Current Order", "Missing Parameter", "Blank Value"],
         "data": output_data
     })
 
@@ -584,6 +589,35 @@ def fetch_lookml_data():
         "headers": ["View Name", "Table Name"],
         "data": output_data
     })
+
+@app.route('/viewFieldName', methods=['POST'])
+def get_lookml_values():
+    data = request.json
+    project_name = data['project_name']
+    root_folder = get_project_path(project_name)
+    concatenated_names = []
+
+    for root, _, fileList in os.walk(root_folder):      
+        for file in fileList:          
+            if 'view' in file.lower():
+                with open(os.path.join(root, file), 'r') as fileObj:
+                    try:
+                        lookml = lkml.load(fileObj)
+                    except SyntaxError as e:
+                        print(f"Error parsing {file}: {e}")
+                        continue
+
+                    if 'views' in lookml:
+                        for view in lookml['views']: 
+                            view_name = view['name'].lstrip('+')
+                            for kind in ['dimensions', 'measures', 'dimension_groups']:
+                                for item in view.get(kind, []):
+                                    field_name = item.get('name', '')
+                                    concatenated_name = f"{view_name}.{field_name}".lower()
+                                    concatenated_names.append(concatenated_name)
+
+    return jsonify(concatenated_names)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
