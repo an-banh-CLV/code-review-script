@@ -6,8 +6,8 @@ from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment
 
 def main():
-    root_folder = 'ONELooker'
-    directory = 'C:/Users/NC/Documents/ONELooker/LOOKML_one_oneforce_spoke/'
+    root_folder = 'ONE_Looker'
+    directory = 'D:/Git Clone/ONE_Looker/LOOKML_one_bkg_doc_spoke'
     results = []
 
     for root, dirs, files in os.walk(directory):
@@ -29,10 +29,16 @@ def main():
                         if view_name:
                             view_name = view_name.group(1)
                             sql_table_name = re.search(r'sql_table_name:\s*`([^`]+)`', view_block)
+                            derived_table = re.search(r'derived_table\s*:\s*{(.+?)}', view_block, re.DOTALL)
                             if sql_table_name:
                                 sql_table_name = sql_table_name.group(1)
-                                if "@" not in sql_table_name:
+                                if "@" not in sql_table_name or 'one-global-dde' in sql_table_name or 'DWH' in sql_table_name or 'DM_VIEWS' in sql_table_name:
                                     results.append((folder, file, view_name, sql_table_name))
+                            if derived_table:
+                                derived_table = derived_table.group(1).strip()
+                                print(derived_table)
+                                if 'one-global-dde' in derived_table or 'DWH' in derived_table or 'DM_VIEWS' in derived_table:
+                                    results.append((folder, file, view_name, derived_table))
 
     df = pd.DataFrame(results, columns=["Folder", "Filename", "View", "Hardcoded BQ View"])
     export_to_excel(df, "Test21.xlsx")
