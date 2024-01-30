@@ -178,11 +178,17 @@ def extract_relevant_views_test03(file_path):
         print(f"Error details: {e}")
         return [], {}
 
-def extract_test_names(file_content):
-    # Regular expression to extract test names
-    # Adjust this regex based on your file structure and test naming conventions
-    test_names = re.findall(r'test:\s*([\w_]+)\s*\{', file_content)
-    return test_names
+def extract_assert_blocks(lookml_code):
+    assert_blocks = re.findall(r'assert:\s+\w+\s*{([^}]+)}', lookml_code, re.DOTALL)
+    result = []
+
+    for assert_content in assert_blocks:
+        expressions = re.findall(r'expression:\s+\$\{(\w+)\.(\w+)', assert_content, re.DOTALL)
+        for expression in expressions:
+            value_before_dot = expression[0]
+            result.append(value_before_dot)
+
+    return result
 
 def is_view_in_test(view_name, test_names):
     # Check if view name is part of any test name
@@ -215,7 +221,7 @@ def process_folder(root_folder, base_folder_name):
                 file_path = os.path.join(foldername, filename)
                 with open(file_path, 'r') as file:
                     content = file.read()
-                    test_names = extract_test_names(content)
+                    test_names = extract_assert_blocks(content)
                     all_tests.extend(test_names)
 
     return all_views_with_details, all_tests, all_primary_keys
