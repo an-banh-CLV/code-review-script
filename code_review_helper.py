@@ -117,19 +117,24 @@ def test_01(folder_path_1, folder_path_2, subfolder_name):
     return results
 
 # Functions for Test 2
-def extract_views_without_derived_table(file_path):
+def extract_views_derived_table(file_path):
     with open(file_path, 'r') as f:
         parsed = lkml.load(f)
     
     views_without_derived_table = []
+    views_with_derived_table = []
     for view in parsed.get('views', []):
-        if 'derived_table' not in view:
-            views_without_derived_table.append(view['name'])
+        if 'derived_table' in view:
+            views_with_derived_table.append(view['name'])
+        if 'extends__all' in view:
+            for sublist in view['extends__all']:
+                views_without_derived_table.append(sublist)
     
-    return views_without_derived_table
+    return views_with_derived_table, views_without_derived_table
 
 def test_02(root_folder, base_folder_name):
     results = []
+    views_with_derived_global = set()
 
     # Focus on the desired sub-folder
     target_folder = os.path.join(root_folder, "03_Spoke_Marts", "01_Common_Marts")
@@ -148,9 +153,12 @@ def test_02(root_folder, base_folder_name):
                 
                 # Check view names inside the file
                 full_path = os.path.join(foldername, filename)
-                views = extract_views_without_derived_table(full_path)
-                for view_name in views:
-                    results.append((file_path, filename, view_name))
+                views_with_derived_table, views_without_derived_table = extract_views_derived_table(full_path)
+                views_with_derived_global.update(views_with_derived_table)
+
+                for view_name in views_without_derived_table:
+                    if view_name not in views_with_derived_global:
+                        results.append((file_path, filename, view_name))
     
     return results
 
