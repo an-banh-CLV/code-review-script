@@ -127,9 +127,12 @@ def extract_views_derived_table(file_path):
         if 'derived_table' in view:
             views_with_derived_table.append(view['name'])
         if 'extends__all' in view:
-            # Assuming extends__all contains a list of view names
-            for view_name in view['extends__all']:
-                views_without_derived_table.append(view_name)  # Add individual view names, not lists
+            # Flatten the list if extends__all contains lists
+            for sublist in view['extends__all']:
+                if isinstance(sublist, list):
+                    views_without_derived_table.extend(sublist)  # Add individual elements of the sublist
+                else:
+                    views_without_derived_table.append(sublist)  # Directly add the item if it's not a list
     
     return views_with_derived_table, views_without_derived_table
 
