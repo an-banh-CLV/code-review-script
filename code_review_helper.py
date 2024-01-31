@@ -162,12 +162,14 @@ def test_02(root_folder, base_folder_name):
                 views_with_derived_global.update(view['view_name'] for view in view_details if view['derived_status'] == 'Yes')
 
                 for view in view_details:
+                    # Flatten the extends_from list if it contains sublists
+                    flattened_extends_from = [item for sublist in view['extends_from'] for item in (sublist if isinstance(sublist, list) else [sublist])]
+
                     # Check if the view meets the conditions
-                    if ((view['derived_status'] == 'No' and not view['extends_from']) or 
-                        not any(ext_view in views_with_derived_global for ext_view in view['extends_from'])):
-                        extend_from_str = ', '.join(view['extends_from']) if view['extends_from'] else 'None'
+                    if (view['derived_status'] == 'No' and 
+                        (not view['extends_from'] or not any(ext_view in views_with_derived_global for ext_view in flattened_extends_from))):
+                        extend_from_str = ', '.join(flattened_extends_from) if flattened_extends_from else 'None'
                         results.append((file_path, filename, view['view_name'], view['derived_status'], extend_from_str))
-    
     return results
 
 # Functions for Test 3
