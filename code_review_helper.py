@@ -121,14 +121,15 @@ def extract_views_derived_table(file_path):
     with open(file_path, 'r') as f:
         parsed = lkml.load(f)
     
-    views_without_derived_table = []
     views_with_derived_table = []
+    views_without_derived_table = []
     for view in parsed.get('views', []):
         if 'derived_table' in view:
             views_with_derived_table.append(view['name'])
         if 'extends__all' in view:
-            for sublist in view['extends__all']:
-                views_without_derived_table.append(sublist)
+            # Assuming extends__all contains a list of view names
+            for view_name in view['extends__all']:
+                views_without_derived_table.append(view_name)  # Add individual view names, not lists
     
     return views_with_derived_table, views_without_derived_table
 
