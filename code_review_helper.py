@@ -121,20 +121,21 @@ def extract_views_derived_table(file_path):
     with open(file_path, 'r') as f:
         parsed = lkml.load(f)
     
-    views_with_derived_table = []
-    views_without_derived_table = []
+    view_details = []
     for view in parsed.get('views', []):
-        if 'derived_table' in view:
-            views_with_derived_table.append(view['name'])
-        if 'extends__all' in view:
-            # Flatten the list if extends__all contains lists
-            for sublist in view['extends__all']:
-                if isinstance(sublist, list):
-                    views_without_derived_table.extend(sublist)  # Add individual elements of the sublist
-                else:
-                    views_without_derived_table.append(sublist)  # Directly add the item if it's not a list
+        view_name = view['name']
+        derived_status = 'Yes' if 'derived_table' in view else 'No'
+        extends_from = view.get('extends__all', [])
+        if not isinstance(extends_from, list):
+            extends_from = [extends_from]
+
+        view_details.append({
+            'view_name': view_name,
+            'derived_status': derived_status,
+            'extends_from': extends_from
+        })
     
-    return views_with_derived_table, views_without_derived_table
+    return view_details
 
 def test_02(root_folder, base_folder_name):
     results = []
@@ -144,25 +145,28 @@ def test_02(root_folder, base_folder_name):
     target_folder = os.path.join(root_folder, "03_Spoke_Marts", "01_Common_Marts")
     
     base_path_parts = os.path.normpath(target_folder).split(os.sep)
-    base_index = base_path_parts.index(base_folder_name)+1
+    base_index = base_path_parts.index(base_folder_name) + 1
     
     for foldername, subfolders, filenames in os.walk(target_folder):
         path_parts = os.path.normpath(foldername).split(os.sep)
-        relative_path_parts = path_parts[base_index:]  # Include base_folder_name and everything after it
+        relative_path_parts = path_parts[base_index:]
         relative_path = os.sep.join(relative_path_parts)
         
         for filename in filenames:
             if filename.endswith('.view.lkml'):
                 file_path = os.path.join(relative_path, filename)
-                
-                # Check view names inside the file
                 full_path = os.path.join(foldername, filename)
-                views_with_derived_table, views_without_derived_table = extract_views_derived_table(full_path)
-                views_with_derived_global.update(views_with_derived_table)
+                view_details = extract_views_derived_table(full_path)
 
-                for view_name in views_without_derived_table:
-                    if view_name not in views_with_derived_global:
-                        results.append((file_path, filename, view_name))
+                # Update the global set of views with derived tables
+                views_with_derived_global.update(view['view_name'] for view in view_details if view['derived_status'] == 'Yes')
+
+                for view in view_details:
+                    # Check if the view meets the conditions
+                    if ((view['derived_status'] == 'No' and not view['extends_from']) or 
+                        not any(ext_view in views_with_derived_global for ext_view in view['extends_from'])):
+                        extend_from_str = ', '.join(view['extends_from']) if view['extends_from'] else 'None'
+                        results.append((file_path, filename, view['view_name'], view['derived_status'], extend_from_str))
     
     return results
 

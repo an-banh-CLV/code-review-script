@@ -73,10 +73,10 @@ def run_script2():
     results = test_02(root_folder, base_folder_name)
     
     # Convert the results to a list of dictionaries for JSON serialization
-    output_data = [{"File Path": item[0], "File Name": item[1], "View Name": item[2]} for item in results]
+    output_data = [{"File Path": item[0], "File Name": item[1], "View Name": item[2], "Derived Table": item[3], "Extend From": item[4]} for item in results]
     
     return jsonify({
-    "headers": ["File Path", "File Name", "View Name"],
+    "headers": ["File Path", "File Name", "View Name", "Derived Table", "Extend From"],
     "data": output_data
     })
 
