@@ -164,13 +164,19 @@ def extract_relevant_views_test03(file_path):
         primary_keys = {}
         for item in parsed.get('views', []):
             view_name = item.get('name')
-            if view_name and "+" not in view_name and not item.get('extends__all'):
+            has_primary_key = False
+
+            # Check if any dimension is a primary key
+            for dimension in item.get('dimensions', []):
+                if dimension.get('primary_key') == 'yes':
+                    has_primary_key = True
+                    primary_keys[view_name] = dimension.get('name')
+                    break  # No need to check other dimensions if primary key found
+
+            # Add the view to relevant_views only if it has a primary key
+            if view_name and "+" not in view_name and not item.get('extends__all') and has_primary_key:
                 relevant_views.append(view_name)
 
-                # Checking for primary key dimensions
-                for dimension in item.get('dimensions', []):
-                    if dimension.get('primary_key') == 'yes':
-                        primary_keys[view_name] = dimension.get('name')
         return relevant_views, primary_keys
 
     except SyntaxError as e:
@@ -868,7 +874,7 @@ def test_20(directory, root_folder):
                     for dim_group in view.get('dimension_groups', []):
                         explores = get_explore_names(root_folder, stripped_view_name)
                         dim_group_name = dim_group['name']
-                        dim_group_body = dim_group  # Modify this if you want specific parts of the body.
+                        dim_group_body = dim_group  # Modify this to get specific parts of the body.
                         convert_tz_param = dim_group.get('convert_tz')
                         #print(convert_tz_param)
 
@@ -907,7 +913,6 @@ def test_21(directory, root_folder):
                                     results.append((folder, file, view_name, sql_table_name))
                             if derived_table:
                                 derived_table = derived_table.group(1).strip()
-                                print(derived_table)
                                 if 'one-global-dde' in derived_table or 'DWH' in derived_table or 'DM_VIEWS' in derived_table:
                                     results.append((folder, file, view_name, derived_table))
 
