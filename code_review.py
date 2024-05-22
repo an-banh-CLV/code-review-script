@@ -551,6 +551,31 @@ def run_script_22():
         "data": output_data
     })
 
+@app.route('/runscript23', methods=['POST'])
+def run_script_23():
+    data = request.get_json()
+    project_name = data.get('project_name', None)
+    root_folder = get_project_path(project_name)
+
+    results = test_23(root_folder)
+
+    # Convert the results to JSON format
+    output_data = [{
+        "Folder Path": item[0],
+        "File Name": item[1],
+        "View Name": item[2],
+        "Extends": item[3],
+        "Measure Name": item[4],
+        "Measure Type": item[5],
+        "SQL": item[6],
+        "Explore": item[7]
+    } for item in results]
+
+    return jsonify({
+        "headers": ["Folder Path", "File Name", "View Name", "Extends", "Measure Name", "Measure Type", "SQL", "Explore"],
+        "data": output_data
+    })
+
 # app for fetching one-hub
 @app.route('/fetchLookMLData', methods=['GET'])
 def fetch_lookml_data():

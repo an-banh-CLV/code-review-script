@@ -966,3 +966,65 @@ def test_22(folder_path):
                             print(f"Error parsing constant in {file_path}: {e}")
 
     return constants_info
+
+# Functions for Test 23
+def test_23(base_path):
+    base_path_parts = os.path.normpath(base_path).split(os.sep)
+    base_path = os.sep.join(base_path_parts[:base_path_parts.index(base_folder_name) + 1])
+
+    # Define prefixes to be excluded
+    prefixes = ['count_of_', 'sum_of_', 'min_of_', 'max_of_', 'average_of_', 'median_of_']
+    
+    # Helper function to check if the field name starts with any of the specified prefixes
+    def has_invalid_prefix(field_name, sql):
+        for prefix in prefixes:
+            if field_name.startswith(prefix):
+                suffix = field_name[len(prefix):]
+                if "${TABLE}" in sql or suffix not in sql:
+                    return False
+                return True
+        return False
+    
+    measures_info = []
+    
+    for foldername, subfolders, filenames in os.walk(base_path):
+        relative_path = os.path.relpath(foldername, base_path)
+        for filename in filenames:
+            if filename.endswith('.lkml'):
+                file_path = os.path.join(foldername, filename)
+                
+                with open(file_path, 'r') as file:
+                    lkml_content = file.read()
+                    parsed_lookml = lkml.load(lkml_content)
+                    
+                    for view in parsed_lookml.get('views', []):
+                        view_name = view.get('name')
+                        extends_view_names = []
+                        
+                        extends = view.get('extends__all')
+                        if extends:
+                            # Handle nested structure of 'extends__all'
+                            for extend_group in extends:
+                                for extend_view in extend_group:
+                                    extends_view_names.append(extend_view)
+                        
+                        extends_view_name = ', '.join(extends_view_names)
+                        
+                        for measure in view.get('measures', []):
+                            measure_name = measure.get('name')
+                            measure_type = measure.get('type')
+                            measure_sql = measure.get('sql')
+                            if measure_name and not has_invalid_prefix(measure_name, measure_sql):
+                                explore_names = get_explore_names(base_path, view_name)
+                                measures_info.append({
+                                    'folder_path': relative_path,
+                                    'view_file_name': filename,
+                                    'view_name': view_name,
+                                    'extends_view_name': extends_view_name,
+                                    'measure_name': measure_name,
+                                    'measure_type': measure_type,
+                                    'sql': measure_sql,
+                                    'explore_names': explore_names
+                                })
+    
+    return measures_info
