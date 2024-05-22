@@ -590,6 +590,115 @@ def fetch_lookml_data():
         "data": output_data
     })
 
+@app.route('/fetchLookMLDetails', methods=['GET'])
+def fetch_lookml_details():
+    print("Endpoint hit!")
+    data = []
+
+    # Your directory path
+    lookml_dir = get_lookml_hub_path()
+
+    for root, _, fileList in os.walk(lookml_dir):
+        for file in fileList:
+            if 'view' in file.lower():
+                with open(os.path.join(root, file), 'r') as fileObj:
+                    try:
+                        lookml = lkml.load(fileObj)
+                    except SyntaxError as e:
+                        print(f"Error parsing {file}: {e}")
+                        continue
+
+                    if 'views' in lookml:
+                        for view in lookml['views']:
+                            view_name = os.path.splitext(file)[0]
+                            sql_table_full = view.get('sql_table_name', '')
+                            sql_table = sql_table_full.split('.')[-1].replace('`', '')
+
+                            if sql_table:  # Proceed if table name is available
+                                # Process dimensions
+                                for dimension in view.get('dimensions', []):
+                                    sql_value = dimension.get('sql', 'N/A')
+                                    if "${TABLE}." in sql_value:
+                                        sql_value = sql_value.replace("${TABLE}.", "")
+                                    
+                                    field_details = {
+                                        "BQ Table Name": sql_table,
+                                        "BQ Column": sql_value,
+                                        "View Name": view_name,
+                                        "Field Name": dimension.get('name', 'N/A'),
+                                        "Field Type": "Dimension",
+                                        "PK": dimension.get('primary_key', 'N/A'),
+                                        "Hidden": dimension.get('hidden', 'N/A'),
+                                        "Type": dimension.get('type', dimension.get('__typename', 'N/A')),
+                                        "Label": dimension.get('label', 'N/A'),
+                                        "View Label": dimension.get('view_label', 'N/A'),
+                                        "Group Label": dimension.get('group_label', 'N/A'),
+                                        "Group Item Label": dimension.get('group_item_label', 'N/A')
+                                    }
+                                    data.append(field_details)
+
+                                # Process measures
+                                for measure in view.get('measures', []):
+                                    sql_value = measure.get('sql', 'N/A')
+                                    if "${TABLE}." in sql_value:
+                                        sql_value = sql_value.replace("${TABLE}.", "")
+                                    
+                                    field_details = {
+                                        "BQ Table Name": sql_table,
+                                        "BQ Column": sql_value,
+                                        "View Name": view_name,
+                                        "Field Name": measure.get('name', 'N/A'),
+                                        "Field Type": "Measure",
+                                        "PK": measure.get('primary_key', 'N/A'),
+                                        "Hidden": measure.get('hidden', 'N/A'),
+                                        "Type": measure.get('type', measure.get('__typename', 'N/A')),
+                                        "Label": measure.get('label', 'N/A'),
+                                        "View Label": measure.get('view_label', 'N/A'),
+                                        "Group Label": measure.get('group_label', 'N/A'),
+                                        "Group Item Label": measure.get('group_item_label', 'N/A')
+                                    }
+                                    data.append(field_details)
+
+                                # Process dimension groups
+                                for dimension_group in view.get('dimension_groups', []):
+                                    sql_value = dimension_group.get('sql', 'N/A')
+                                    if "${TABLE}." in sql_value:
+                                        sql_value = sql_value.replace("${TABLE}.", "")
+                                    
+                                    field_details = {
+                                        "BQ Table Name": sql_table,
+                                        "BQ Column": sql_value,
+                                        "View Name": view_name,
+                                        "Field Name": dimension_group.get('name', 'N/A'),
+                                        "Field Type": "Dimension Group",
+                                        "PK": dimension_group.get('primary_key', 'N/A'),
+                                        "Hidden": dimension_group.get('hidden', 'N/A'),
+                                        "Type": dimension_group.get('type', dimension_group.get('__typename', 'N/A')),
+                                        "Label": dimension_group.get('label', 'N/A'),
+                                        "View Label": dimension_group.get('view_label', 'N/A'),
+                                        "Group Label": dimension_group.get('group_label', 'N/A'),
+                                        "Group Item Label": dimension_group.get('group_item_label', 'N/A')
+                                    }
+                                    data.append(field_details)
+
+    return jsonify({
+        "headers": 
+            ["BQ Table Name"
+             ,"BQ Column"
+             ,"View Name"
+             ,"Field Name"
+             ,"Field Type"
+             ,"PK"
+             ,"Hidden"
+             ,"Type"
+             ,"Label"
+             ,"View Label"
+             ,"Group Label"
+             ,"Group Item Label"
+            ],
+        "data": data
+    })
+
 @app.route('/viewFieldName', methods=['POST'])
 def get_lookml_values():
     data = request.json
