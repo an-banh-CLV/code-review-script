@@ -988,43 +988,45 @@ def test_23(base_path):
     measures_info = []
     
     for foldername, subfolders, filenames in os.walk(base_path):
-        relative_path = os.path.relpath(foldername, base_path)
         for filename in filenames:
             if filename.endswith('.lkml'):
                 file_path = os.path.join(foldername, filename)
                 
-                with open(file_path, 'r') as file:
-                    lkml_content = file.read()
-                    parsed_lookml = lkml.load(lkml_content)
-                    
-                    for view in parsed_lookml.get('views', []):
-                        view_name = view.get('name')
-                        extends_view_names = []
+                try:
+                    with open(file_path, 'r') as file:
+                        lkml_content = file.read()
+                        parsed_lookml = lkml.load(lkml_content)
                         
-                        extends = view.get('extends__all')
-                        if extends:
-                            # Handle nested structure of 'extends__all'
-                            for extend_group in extends:
-                                for extend_view in extend_group:
-                                    extends_view_names.append(extend_view)
-                        
-                        extends_view_name = ', '.join(extends_view_names)
-                        
-                        for measure in view.get('measures', []):
-                            measure_name = measure.get('name')
-                            measure_type = measure.get('type')
-                            measure_sql = measure.get('sql')
-                            if measure_name and not has_invalid_prefix(measure_name, measure_sql):
-                                explore_names = get_explore_names(base_path, view_name)
-                                measures_info.append({
-                                    'folder_path': relative_path,
-                                    'view_file_name': filename,
-                                    'view_name': view_name,
-                                    'extends_view_name': extends_view_name,
-                                    'measure_name': measure_name,
-                                    'measure_type': measure_type,
-                                    'sql': measure_sql,
-                                    'explore_names': explore_names
-                                })
+                        for view in parsed_lookml.get('views', []):
+                            view_name = view.get('name')
+                            extends_view_names = []
+                            
+                            extends = view.get('extends__all')
+                            if extends:
+                                # Handle nested structure of 'extends__all'
+                                for extend_group in extends:
+                                    for extend_view in extend_group:
+                                        extends_view_names.append(extend_view)
+                            
+                            extends_view_name = ', '.join(extends_view_names)
+                            
+                            for measure in view.get('measures', []):
+                                measure_name = measure.get('name')
+                                measure_type = measure.get('type')
+                                measure_sql = measure.get('sql')
+                                if measure_name and not has_invalid_prefix(measure_name, measure_sql):
+                                    explore_names = get_explore_names(base_path, view_name)
+                                    measures_info.append((
+                                        foldername,
+                                        filename,
+                                        view_name,
+                                        extends_view_name,
+                                        measure_name,
+                                        measure_type,
+                                        measure_sql,
+                                        explore_names
+                                    ))
+                except Exception as e:
+                    print(f"Error processing file {file_path}: {e}")
     
     return measures_info
