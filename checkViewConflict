@@ -61,6 +61,21 @@ def get_all_view_names(base_path):
                     print(f"An error occurred while reading {full_path}: {e}")
     return view_details
 
+def find_matching_views(base_spoke_name, spoke_names, base_path, view_details):
+    matching_details = []
+    for spoke_name in spoke_names:
+        compare_base_path = f"D:/Git Clone/ONE_Looker/{spoke_name}"
+        compare_view_details = get_all_view_names(compare_base_path)
+        
+        for folder_path, view_name, view_type, extended_view in view_details:
+            for compare_folder_path, compare_view_name, compare_view_type, compare_extended_view in compare_view_details:
+                if view_name == compare_view_name:
+                    matching_details.append((
+                        folder_path, base_spoke_name, view_name, extended_view,
+                        compare_folder_path, spoke_name, compare_view_name, compare_view_type, compare_extended_view
+                    ))
+    return matching_details
+
 def save_to_excel(data, output_path, sheet_name, columns):
     df = pd.DataFrame(data, columns=columns)
     with pd.ExcelWriter(output_path, mode='w', engine='openpyxl') as writer:
