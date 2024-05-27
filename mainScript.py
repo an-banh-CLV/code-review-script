@@ -4,7 +4,7 @@ import lkml
 import re
 import subprocess
 import pandas as pd
-from code_review_helper import *
+from helperScript import *
 
 # Setup for Flask App
 app = Flask(__name__)
@@ -754,5 +754,5 @@ def get_lookml_values():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5000)
 

@@ -1,0 +1,91 @@
+import os
+import re
+import lkml
+import pandas as pd
+
+def get_view_names_from_explore(base_path, explore_name, suffix='.explore.lkml'):
+    full_path = os.path.join(base_path, f"{explore_name}{suffix}")
+    
+    try:
+        with open(full_path, 'r') as file:
+            lines = file.readlines()
+            content = ''.join([line for line in lines if not line.strip().startswith('#')])
+            
+            # Use regex to find content inside square brackets after "fields:"
+            match = re.search(r'fields:\s*\[([^\]]+)\]', content)
+            if match:
+                fields_content = match.group(1)
+                # Use regex to find all terms before the dot in fields
+                matches = re.findall(r'(\w+)\.', fields_content)
+                views = set(matches)
+                return sorted(list(views))  # Sort the results alphabetically
+            else:
+                print(f"No fields found in {full_path}")
+                return []
+    except FileNotFoundError:
+        print(f"File {full_path} not found.")
+        return []
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
+
+def get_all_view_names(base_path):
+    view_details = []
+    for root, _, files in os.walk(base_path):
+        for file in files:
+            if file.endswith('.view.lkml'):
+                full_path = os.path.join(root, file)
+                try:
+                    with open(full_path, 'r') as file_obj:
+                        content = file_obj.read()
+                        parsed = lkml.load(content)
+                        folder_path = os.path.relpath(root, base_path)
+                        print(f"Parsed content from {full_path}: {parsed}")  # Debugging print
+                        for view in parsed.get('views', []):
+                            view_name = view.get('name')
+                            if view_name.startswith('+'):
+                                view_name_clean = view_name[1:]
+                                view_details.append((folder_path, view_name_clean, 'refine', view_name_clean))
+                            elif 'extends__all' in view:
+                                extends = view.get('extends__all')
+                                for extend_group in extends:
+                                    for extend_view in extend_group:
+                                        view_details.append((folder_path, view_name, 'extend', extend_view))
+                            elif 'sql_table_name' in view:
+                                view_details.append((folder_path, view_name, 'sql_table_name', None))
+                            elif 'derived_table' in view:
+                                view_details.append((folder_path, view_name, 'derived_table', None))
+                            else:
+                                view_details.append((folder_path, view_name, None, None))
+                except Exception as e:
+                    print(f"An error occurred while reading {full_path}: {e}")
+    return view_details
+
+def save_to_excel(data, output_path, sheet_name, columns):
+    df = pd.DataFrame(data, columns=columns)
+    with pd.ExcelWriter(output_path, mode='w', engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+# Example usage
+base_path = "D:/Git Clone/ONE_Looker/LOOKML_one_equipment_spoke/"
+explore_name = "02_Models/EQR"
+suffix = ".explore.lkml"
+output_path = "D:/Git Clone/ONE_Looker/explore_check/explore_view.xlsx"
+
+# Get view names from explore
+explore_view_names = get_view_names_from_explore(base_path, explore_name, suffix)
+print("Explore view names:", explore_view_names)  # Debugging print
+
+# Get all view names and details
+view_details = get_all_view_names(base_path)
+print("All view details:", view_details)  # Debugging print
+
+# Filter view details by explore view names
+filtered_view_details = [detail for detail in view_details if detail[1] in explore_view_names]
+print("Filtered view details:", filtered_view_details)  # Debugging print
+
+# Save view details to the Excel file
+if filtered_view_details:
+    save_to_excel(filtered_view_details, output_path, "View Details", ["Folder Path", "View Name", "Type", "Base/Extended View"])
+
+print(f"View names and details saved to {output_path}")
