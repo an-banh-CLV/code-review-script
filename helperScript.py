@@ -5,7 +5,7 @@ import pandas as pd
 
 subfolder_name_01 = '01_Extend_&_Refine' 
 lookml_hub = 'LOOKML_one_hub'
-base_path = '/home/looker/An-ONE-Looker/'
+base_path = '/home/ubuntu/Documents/An-ONE-Looker/'
 base_folder_name = 'An-ONE-Looker'
 
 # Helper functions
