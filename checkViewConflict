@@ -61,31 +61,51 @@ def get_all_view_names(base_path):
                     print(f"An error occurred while reading {full_path}: {e}")
     return view_details
 
-def find_matching_views(base_spoke_name, spoke_names, base_path, view_details):
+def find_matching_views(base_spoke_name, spoke_names, base_path, filtered_view_details):
     matching_details = []
     for spoke_name in spoke_names:
         compare_base_path = f"D:/Git Clone/ONE_Looker/{spoke_name}"
         compare_view_details = get_all_view_names(compare_base_path)
         
-        for folder_path, view_name, view_type, extended_view in view_details:
+        for folder_path, view_name, view_type, extended_view in filtered_view_details:
             for compare_folder_path, compare_view_name, compare_view_type, compare_extended_view in compare_view_details:
                 if view_name == compare_view_name:
                     matching_details.append((
-                        folder_path, base_spoke_name, view_name, extended_view,
+                        folder_path, base_spoke_name, view_name, view_type, extended_view,
                         compare_folder_path, spoke_name, compare_view_name, compare_view_type, compare_extended_view
                     ))
     return matching_details
 
 def save_to_excel(data, output_path, sheet_name, columns):
     df = pd.DataFrame(data, columns=columns)
-    with pd.ExcelWriter(output_path, mode='w', engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
+    if not os.path.exists(output_path):
+        with pd.ExcelWriter(output_path, mode='w', engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    else:
+        with pd.ExcelWriter(output_path, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
 
 # Example usage
-base_path = "D:/Git Clone/ONE_Looker/LOOKML_one_equipment_spoke/"
+all_spoke_names = [
+    "LOOKML_one_ap_spoke",
+    "LOOKML_one_ar_spoke",
+    "LOOKML_one_bkg_doc_spoke",
+    "LOOKML_one_bpit_spoke",
+    "LOOKML_one_oneforce_spoke",
+    "LOOKML_one_ecommerce_spoke",
+    "LOOKML_one_equipment_spoke",
+    "LOOKML_one_hub",
+    "LOOKML_one_oneforce_spoke",
+    "LOOKML_one_pricing_spoke",
+    "LOOKML_one_space_yield_spoke",
+    "LOOKML_one_vessel_special_cargo_spoke"
+]
+selected_spoke = "LOOKML_one_equipment_spoke"
+base_path = f"D:/Git Clone/ONE_Looker/{selected_spoke}/"
 explore_name = "02_Models/EQR"
 suffix = ".explore.lkml"
 output_path = "D:/Git Clone/ONE_Looker/explore_check/explore_view.xlsx"
+spoke_names = [spoke for spoke in all_spoke_names if spoke != selected_spoke] 
 
 # Get view names from explore
 explore_view_names = get_view_names_from_explore(base_path, explore_name, suffix)
@@ -99,8 +119,17 @@ print("All view details:", view_details)  # Debugging print
 filtered_view_details = [detail for detail in view_details if detail[1] in explore_view_names]
 print("Filtered view details:", filtered_view_details)  # Debugging print
 
-# Save view details to the Excel file
+# Find matching views in other spoke paths
+base_spoke_name = base_path.rstrip('/').split('/')[-1]
+matching_view_details = find_matching_views(base_spoke_name, spoke_names, base_path, filtered_view_details)
+print("Matching view details:", matching_view_details)  # Debugging print
+
+# Save view details to the first sheet
 if filtered_view_details:
     save_to_excel(filtered_view_details, output_path, "View Details", ["Folder Path", "View Name", "Type", "Base/Extended View"])
+
+# Save matching view details to the second sheet
+if matching_view_details:
+    save_to_excel(matching_view_details, output_path, "Matching Views", ["Folder Path", "Base Spoke Name", "View Name", "View Type", "Extended View", "Compare Folder Path", "Compare Spoke Name", "Compare View Name", "Compare View Type", "Compare Extended View"])
 
 print(f"View names and details saved to {output_path}")

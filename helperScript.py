@@ -316,7 +316,7 @@ def extract_parameters(file_path):
     # Define parameters and their expected values
     expected_params = {
         "case_sensitive": "no",
-        "connection": ["onedw", "onedw_new"],
+        "connection": ["one-all-norm", "one-all-oauth"],
         "fiscal_month_offset": "3",
         "week_start_day": "sunday"
     }
@@ -1030,3 +1030,77 @@ def test_23(base_path):
                     print(f"Error processing file {file_path}: {e}")
     
     return measures_info
+
+# Helper for checking view conflict
+def get_view_names_from_explore(base_path, explore_name, suffix='.explore.lkml'):
+    full_path = os.path.join(base_path, f"{explore_name}{suffix}")
+    
+    try:
+        with open(full_path, 'r') as file:
+            lines = file.readlines()
+            content = ''.join([line for line in lines if not line.strip().startswith('#')])
+            
+            # Use regex to find content inside square brackets after "fields:"
+            match = re.search(r'fields:\s*\[([^\]]+)\]', content)
+            if match:
+                fields_content = match.group(1)
+                # Use regex to find all terms before the dot in fields
+                matches = re.findall(r'(\w+)\.', fields_content)
+                views = set(matches)
+                return sorted(list(views))  # Sort the results alphabetically
+            else:
+                print(f"No fields found in {full_path}")
+                return []
+    except FileNotFoundError:
+        print(f"File {full_path} not found.")
+        return []
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
+
+def get_all_view_names(base_path):
+    view_details = []
+    for root, _, files in os.walk(base_path):
+        for file in files:
+            if file.endswith('.view.lkml'):
+                full_path = os.path.join(root, file)
+                try:
+                    with open(full_path, 'r') as file_obj:
+                        content = file_obj.read()
+                        parsed = lkml.load(content)
+                        folder_path = os.path.relpath(root, base_path)
+                        print(f"Parsed content from {full_path}: {parsed}")  # Debugging print
+                        for view in parsed.get('views', []):
+                            view_name = view.get('name')
+                            if view_name.startswith('+'):
+                                view_name_clean = view_name[1:]
+                                view_details.append((folder_path, view_name_clean, 'refine', view_name_clean))
+                            elif 'extends__all' in view:
+                                extends = view.get('extends__all')
+                                for extend_group in extends:
+                                    for extend_view in extend_group:
+                                        view_details.append((folder_path, view_name, 'extend', extend_view))
+                            elif 'sql_table_name' in view:
+                                view_details.append((folder_path, view_name, 'sql_table_name', None))
+                            elif 'derived_table' in view:
+                                view_details.append((folder_path, view_name, 'derived_table', None))
+                            else:
+                                view_details.append((folder_path, view_name, None, None))
+                except Exception as e:
+                    print(f"An error occurred while reading {full_path}: {e}")
+    return view_details
+
+def find_matching_views(base_spoke_name, spoke_names, base_path, filtered_view_details):
+    matching_details = []
+    for spoke_name in spoke_names:
+        compare_base_path = f"D:/Git Clone/ONE_Looker/{spoke_name}"
+        compare_view_details = get_all_view_names(compare_base_path)
+        
+        for folder_path, view_name, view_type, extended_view in filtered_view_details:
+            for compare_folder_path, compare_view_name, compare_view_type, compare_extended_view in compare_view_details:
+                if view_name == compare_view_name:
+                    matching_details.append((
+                        folder_path, base_spoke_name, view_name, view_type, extended_view,
+                        compare_folder_path, spoke_name, compare_view_name, compare_view_type, compare_extended_view
+                    ))
+    return matching_details
